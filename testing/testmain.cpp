@@ -81,11 +81,11 @@ static size_t CompressMiniz(const void* data, size_t size, int level = MZ_DEFAUL
 	return resSize;
 }
 
-
 int main()
 {
 	#define TEST_BC1 1
     #define TEST_BC3 1
+    #define TEST_ASTC_6x6 1
 
 	// files we're testing on
 	const char* kFiles[] =
@@ -100,27 +100,27 @@ int main()
         "dxt1/mainsquare_shadows_bake1-1024x1024.bin",
         "dxt1/Marble Tile NM-512x512.bin",
         "dxt1/Marble Tile-512x512.bin",
-        //"dxt1/NoiseEffectGrain-256x256.bin",
-        //"dxt1/NoiseEffectScratch-512x512.bin",
 		#endif // #if TEST_BC1
 
         #if TEST_BC3
-        //"dxt5/2K_bomb-2048x2048.bin",
-        //"dxt5/ArchesAO-1024x1024.bin",
-        //"dxt5/ArchesNormals-1024x1024.bin",
         "dxt5/Big Checkmark-64x64.bin",
         "dxt5/Explosion-512x512.bin",
-        //"dxt5/fire-512x256.bin",
-        //"dxt5/HellephantEmissive-1024x1024.bin",
         "dxt5/HellephantNormals-1024x1024.bin",
         "dxt5/HellephantOcclusion-1024x1024.bin",
-        //"dxt5/icon-2048x2048.bin",
         "dxt5/SpaceCute-Girl1-256x256.bin",
         "dxt5/tile_grate_tech_dff-1024x512.bin",
         "dxt5/tile_paint_orange_dff-1024x1024.bin",
         "dxt5/vehicle_rcFlyer_dff-1024x1024.bin",
         "dxt5/wall_deco1_diff_layers-512x512.bin",
         #endif // #if TEST_BC3
+
+        #if TEST_ASTC_6x6
+        "astc_rgba_6x6/1k_HouseDiffuse-1024x1024.bin",
+        "astc_rgba_6x6/ArchesDiffuse-1024x1024.bin",
+        "astc_rgba_6x6/ColorGrid-128x128.bin",
+        "astc_rgba_6x6/Marble Tile NM-512x512.bin",
+        "astc_rgba_6x6/Marble Tile-512x512.bin",
+        #endif // #if TEST_ASTC_6x6
 	};
 
     typedef std::pair<size_t, size_t> SizesRawFiltered;
@@ -161,6 +161,8 @@ int main()
             format = filteression::kTextureFormatBC1;
         else if (formatStr == "dxt5")
             format = filteression::kTextureFormatBC3;
+        else if (formatStr == "astc_rgba_6x6")
+            format = filteression::kTextureFormatASTC_6x6;
         else
         {
             printf("ERROR: unknown format %s\n", formatStr.c_str());

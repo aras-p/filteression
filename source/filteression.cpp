@@ -8,32 +8,71 @@ using namespace filteression;
 
 #define _FLTESS_ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 
+static uint32_t fltess_ZigEncode(int32_t i, int bits)
+{
+    uint32_t bitmask = (uint32_t)((1LL << bits)-1);
+    uint32_t u = uint32_t(i) & bitmask;
+    uint32_t mask = u & (1<<(bits-1)) ? bitmask : 0;
+    uint32_t res = (u << 1) ^ mask;
+    return res;
+}
+
+static int32_t fltess_ZigDecode(uint32_t u, int bits)
+{
+    uint32_t bitmask = (uint32_t)((1LL << bits)-1);
+    u &= bitmask;
+    int32_t v = (u & 1) ? ((u >> 1) ^ ~0) : (u >> 1);
+    return v;
+}
+
 
 struct StreamDesc
 {
     int bitStart;
     int bitCount;
+    bool delta;
 };
 static const StreamDesc kStreamsBC1[] =
 {
     /*
-    {0,5}, // color endpoint 0 blue
-    {16,5}, // color endpoint 1 blue
-    {11,5}, // color endpoint 0 red
-    {27,5}, // color endpoint 1 red
-    {5,6}, // color endpoint 0 green
-    {21,6}, // color endpoint 1 green
+    {0,5,true}, // color endpoint 0 blue
+    {16,5,true}, // color endpoint 1 blue
+    {11,5,true}, // color endpoint 0 red
+    {27,5,true}, // color endpoint 1 red
+    {5,6,true}, // color endpoint 0 green
+    {21,6,true}, // color endpoint 1 green
      */
-    {0,32}, // endpoints
-    {32,32}, // selector bits
+    //{0,16,true}, // endpoint 0
+    //{16,16,true}, // endpoint 1
+    {0,32,false}, // endpoints
+    {32,32,false}, // selector bits
 };
 
 static const StreamDesc kStreamsBC3[] =
 {
-    {0,32}, // alpha endpoints
-    {64,32}, // color endpoints
-    {32,32}, // alpha selector bits
-    {96,32}, // color selector bits
+    /*
+    {0,16,true}, // alpha endpoint 0
+    {16,16,true}, // alpha endpoint 1
+    {64,16,true}, // color endpoint 0
+    {80,16,true}, // color endpoint 1
+     */
+    {0,32,false}, // alpha endpoints
+    {64,32,false}, // color endpoints
+    {32,32,false}, // alpha selector bits
+    {96,32,false}, // color selector bits
+};
+
+static const StreamDesc kStreamsASTC[] =
+{
+    {0,5,true},
+    {5,4,true},
+    {9,2,true},
+    //{11,6,false}, // partition count + CEM for some cases
+    //{17,15,false},
+    {11,21,false},
+    {32,32,false},
+    {64,32,false},
+    {96,32,false},
 };
 
 static bool ArgsCheck(const void* data, size_t byteSize, int width, int height, void* outData)
@@ -57,6 +96,11 @@ static bool GetFormatDesc(TextureFormat format, int& outWidth, int& outHeight, i
             outWidth = outHeight = 4;
             outBlockBytes = 16;
             outStreams = kStreamsBC3; outStreamCount = _FLTESS_ARRAY_SIZE(kStreamsBC3);
+            return true;
+        case kTextureFormatASTC_6x6:
+            outWidth = outHeight = 6;
+            outBlockBytes = 16;
+            outStreams = kStreamsASTC; outStreamCount = _FLTESS_ARRAY_SIZE(kStreamsASTC);
             return true;
         default:
             outWidth = outHeight = outBlockBytes = 1;
@@ -101,19 +145,29 @@ bool filteression::Encode(const void* data, size_t byteSize, int width, int heig
     const int blocksX = (width+blockWidth-1) / blockWidth;
     const int blocksY = (height+blockHeight-1) / blockHeight;
     const int blockCount = blocksX * blocksY;
+    const size_t rowStride = blocksX * blockBytes;
     const uint8_t* srcPtr = (const uint8_t*)data;
+    const uint8_t* srcPrevRow = srcPtr - rowStride;
     uint8_t* dstPtr = (uint8_t*)outData;
     size_t dstBit = 0;
     for (size_t is = 0; is < streamCount; ++is)
     {
         const uint8_t* src = srcPtr;
+        const uint8_t* srcPrev = srcPrevRow;
         const uint32_t streamBitMask = (uint32_t)((1ULL<<streams[is].bitCount)-1);
+        uint32_t prevBits = 0;
         for (size_t iblock = 0; iblock < blockCount; ++iblock)
         {
             uint32_t bits = GetBits(src, streams[is].bitStart, streamBitMask);
-            SetBits(dstPtr, dstBit, streamBitMask, bits);
+            uint32_t topBits = iblock >= blocksX ? GetBits(srcPrev, streams[is].bitStart, streamBitMask) : prevBits;
+            uint32_t avgBits = (prevBits + topBits) / 2;
+            int32_t delta = bits - avgBits;
+            uint32_t deltaBits = fltess_ZigEncode(delta, streams[is].bitCount) & streamBitMask;
+            prevBits = bits;
+            SetBits(dstPtr, dstBit, streamBitMask, streams[is].delta ? deltaBits : bits);
             dstBit += streams[is].bitCount;
             src += blockBytes;
+            srcPrev += blockBytes;
         }
     }
     
@@ -136,6 +190,7 @@ bool filteression::Decode(const void* data, size_t byteSize, int width, int heig
     const int blocksX = (width+blockWidth-1) / blockWidth;
     const int blocksY = (height+blockHeight-1) / blockHeight;
     const int blockCount = blocksX * blocksY;
+    const size_t rowStride = blocksX * blockBytes;
     const uint8_t* srcPtr = (const uint8_t*)data;
     uint8_t* dstPtr = (uint8_t*)outData;
     size_t srcBit = 0;
@@ -143,9 +198,23 @@ bool filteression::Decode(const void* data, size_t byteSize, int width, int heig
     {
         uint8_t* dst = dstPtr;
         const uint32_t streamBitMask = (uint32_t)((1ULL<<streams[is].bitCount)-1);
+        uint32_t prevBits = 0;
         for (size_t iblock = 0; iblock < blockCount; ++iblock)
         {
-            uint32_t bits = GetBits(srcPtr, srcBit, streamBitMask);
+            uint32_t deltaBits = GetBits(srcPtr, srcBit, streamBitMask);
+            uint32_t bits;
+            if (streams[is].delta)
+            {
+                int32_t delta = fltess_ZigDecode(deltaBits, streams[is].bitCount);
+                uint32_t topBits = iblock >= blocksX ? GetBits(dst-rowStride, streams[is].bitStart, streamBitMask) : prevBits;
+                uint32_t avgBits = (prevBits + topBits) / 2;
+                bits = (avgBits + delta) & streamBitMask;
+            }
+            else
+            {
+                bits = deltaBits;
+            }
+            prevBits = bits;
             SetBits(dst, streams[is].bitStart, streamBitMask, bits);
             srcBit += streams[is].bitCount;
             dst += blockBytes;

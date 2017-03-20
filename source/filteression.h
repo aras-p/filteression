@@ -13,6 +13,7 @@ namespace filteression
 	{
         kTextureFormatBC1 = 0, // aka DXT1
         kTextureFormatBC3, // aka DXT5
+        kTextureFormatASTC_6x6,
         kTextureFormatCount
 	};
 
