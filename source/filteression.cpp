@@ -67,18 +67,22 @@ static bool GetFormatDesc(TextureFormat format, int& outWidth, int& outHeight, i
 }
 
 
-//@TODO: optimize!
-static inline bool TestBit(const uint8_t* bits, size_t index)
+static inline uint32_t GetBits(const uint8_t* bits, size_t index, size_t count)
 {
-    return (bits[index / 8] & (1 << (index & 7))) != 0;
+    bits += index/8;
+    uint32_t word = *(const uint32_t*)bits; //@TODO: unaligned read
+    word >>= index & 7;
+    word &= (1ULL<<count)-1; //@TODO: 1<<count-1 could be precomputed
+    return word;
 }
 
-inline void SetBit(uint8_t* bits, size_t index, bool value)
+static inline void SetBits(uint8_t* bits, size_t index, size_t count, uint32_t value)
 {
-    if (value)
-        bits[index / 8] |= 1 << (index & 7);
-    else
-        bits[index / 8] &= ~(1 << (index & 7));
+    bits += index/8;
+    uint32_t word = *(const uint32_t*)bits; //@TODO: unaligned read
+    word &= ~(((1ULL<<count)-1) << (index & 7)); //@TODO: 1<<count-1 could be precomputed
+    word |= value << (index & 7);
+    *(uint32_t*)bits = word; //@TODO: unaligned write
 }
 
 
@@ -105,12 +109,9 @@ bool filteression::Encode(const void* data, size_t byteSize, int width, int heig
         const uint8_t* src = srcPtr;
         for (size_t iblock = 0; iblock < blockCount; ++iblock)
         {
-            for (size_t ibit = 0; ibit < streams[is].bitCount; ++ibit)
-            {
-                bool v = TestBit(src, streams[is].bitStart + ibit);
-                SetBit(dstPtr, dstBit, v);
-                dstBit++;
-            }
+            uint32_t bits = GetBits(src, streams[is].bitStart, streams[is].bitCount);
+            SetBits(dstPtr, dstBit, streams[is].bitCount, bits);
+            dstBit += streams[is].bitCount;
             src += blockBytes;
         }
     }
@@ -142,12 +143,9 @@ bool filteression::Decode(const void* data, size_t byteSize, int width, int heig
         uint8_t* dst = dstPtr;
         for (size_t iblock = 0; iblock < blockCount; ++iblock)
         {
-            for (size_t ibit = 0; ibit < streams[is].bitCount; ++ibit)
-            {
-                bool v = TestBit(srcPtr, srcBit);
-                SetBit(dst, streams[is].bitStart + ibit, v);
-                srcBit++;
-            }
+            uint32_t bits = GetBits(srcPtr, srcBit, streams[is].bitCount);
+            SetBits(dst, streams[is].bitStart, streams[is].bitCount, bits);
+            srcBit += streams[is].bitCount;
             dst += blockBytes;
         }
     }

@@ -248,7 +248,7 @@ int main()
         size_t size = totalSize[fit->first];
         printf("\n%s: original size %6.1fKB\n", fit->first.c_str(), size/1024.0f);
         const EncodeDecodeTime& times = filterTimes[fit->first];
-        printf("encode %.2fs (%.1fMB/s) decode %.2f (%.1fMB/s)s\n", times.first, size/1024.0f/1024.0f/times.first, times.second, size/1024.0f/1024.0f/times.second);
+        printf("encode %.1fms (%.1fMB/s) decode %.1fms (%.1fMB/s)\n", times.first*1000.0f, size/1024.0f/1024.0f/times.first, times.second*1000.0f, size/1024.0f/1024.0f/times.second);
         const CompressorSizeMap& sizeMap = sizes[fit->first];
         for (CompressorSizeMap::const_iterator it = sizeMap.begin(), itEnd = sizeMap.end(); it != itEnd; ++it)
         {
