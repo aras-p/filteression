@@ -1,0 +1,163 @@
+DXT1/DXT5, split into simple streams:
+- DXT1: endpoints, selectors
+- DXT5: alpha endpoints, color endpoints, alpha selectors, color selectors
+
+dxt1: original size 3338.0KB
+1   zlib      2172.5KB  65.1%  1982.6KB  59.4%
+2    lz4      2797.2KB  83.8%  2609.7KB  78.2%
+3  lz4hc      2415.4KB  72.4%  2245.1KB  67.3%
+4   zstd      2417.5KB  72.4%  2138.4KB  64.1%
+5 zstd20      2047.2KB  61.3%  1885.9KB  56.5%
+
+dxt5: original size 5188.0KB
+1   zlib      3016.2KB  58.1%  2693.7KB  51.9%
+2    lz4      3518.2KB  67.8%  3273.8KB  63.1%
+3  lz4hc      3147.9KB  60.7%  2918.0KB  56.2%
+4   zstd      3145.5KB  60.6%  2868.2KB  55.3%
+5 zstd20      2830.9KB  54.6%  2596.7KB  50.1%
+
+
+Optimize bit manipulation (was 30MB/s encode & decode):
+
+dxt1: original size 3338.0KB
+encode 2.2ms (1473.0MB/s) decode 1.5ms (2133.9MB/s)
+1   zlib      2172.5KB  65.1%  1982.6KB  59.4%
+2    lz4      2797.2KB  83.8%  2609.7KB  78.2%
+3  lz4hc      2415.4KB  72.4%  2245.1KB  67.3%
+4   zstd      2417.5KB  72.4%  2138.4KB  64.1%
+5 zstd20      2047.2KB  61.3%  1885.9KB  56.5%
+
+dxt5: original size 5188.0KB
+encode 3.3ms (1513.9MB/s) decode 2.5ms (2005.7MB/s)
+1   zlib      3016.2KB  58.1%  2693.7KB  51.9%
+2    lz4      3518.2KB  67.8%  3273.8KB  63.1%
+3  lz4hc      3147.9KB  60.7%  2918.0KB  56.2%
+4   zstd      3145.5KB  60.6%  2868.2KB  55.3%
+5 zstd20      2830.9KB  54.6%  2596.7KB  50.1%
+
+
+Optimize bit manipulation a tiny bit more, by precomputing bit masks:
+dxt1 encode 1.8ms (1833.0MB/s) decode 1.4ms (2262.7MB/s)
+dxt5 encode 2.7ms (1865.1MB/s) decode 2.5ms (1997.8MB/s)
+
+
+Delta encode everything in DXT1/DXT5 streams:
+
+dxt1: original size 3338.0KB
+encode 2.1ms (1549.7MB/s) decode 1.6ms (2020.3MB/s)
+1   zlib      2172.5KB  65.1%  2278.5KB  68.3%
+2    lz4      2797.2KB  83.8%  2720.1KB  81.5%
+3  lz4hc      2415.4KB  72.4%  2420.3KB  72.5%
+4   zstd      2417.5KB  72.4%  2336.6KB  70.0%
+5 zstd20      2047.2KB  61.3%  2197.4KB  65.8%
+
+dxt5: original size 5188.0KB
+encode 3.3ms (1550.4MB/s) decode 2.9ms (1764.1MB/s)
+1   zlib      3016.2KB  58.1%  2999.8KB  57.8%
+2    lz4      3518.2KB  67.8%  3454.2KB  66.6%
+3  lz4hc      3147.9KB  60.7%  3175.0KB  61.2%
+4   zstd      3145.5KB  60.6%  3073.8KB  59.2%
+5 zstd20      2830.9KB  54.6%  2912.9KB  56.1%
+
+WHOOPS! Larger :(
+
+
+Split into separate endpoint 0 + endpoint 1 streams, delta
+encode those:
+
+dxt1: original size 3338.0KB
+encode 5.5ms (592.5MB/s) decode 3.2ms (1014.3MB/s)
+1   zlib      2172.5KB  65.1%  1980.3KB  59.3%
+2    lz4      2797.2KB  83.8%  2634.6KB  78.9%
+3  lz4hc      2415.4KB  72.4%  2236.2KB  67.0%
+4   zstd      2417.5KB  72.4%  2079.2KB  62.3%
+5 zstd20      2047.2KB  61.3%  1883.9KB  56.4%
+
+dxt5: original size 5188.0KB
+encode 8.5ms (592.8MB/s) decode 4.9ms (1044.0MB/s)
+1   zlib      3016.2KB  58.1%  2713.3KB  52.3%
+2    lz4      3518.2KB  67.8%  3316.9KB  63.9%
+3  lz4hc      3147.9KB  60.7%  2953.6KB  56.9%
+4   zstd      3145.5KB  60.6%  2818.5KB  54.3%
+5 zstd20      2830.9KB  54.6%  2620.2KB  50.5%
+
+Meh, not terribly impressive results.
+
+Paper for inspiration: "Lossless Compression of Already Compressed Textures"
+
+
+
+Zig/Zag encoding with arbitrary bit field widths:
+static uint32_t fltess_ZigEncode(int32_t i, int bits)
+{
+    uint32_t bitmask = (uint32_t)((1LL << bits)-1);
+    uint32_t u = uint32_t(i) & bitmask;
+    uint32_t mask = u & (1<<(bits-1)) ? bitmask : 0;
+    uint32_t res = (u << 1) ^ mask;
+    return res;
+}
+static int32_t fltess_ZigDecode(uint32_t u, int bits)
+{
+    uint32_t bitmask = (uint32_t)((1LL << bits)-1);
+    u &= bitmask;
+    int32_t v = (u & 1) ? ((u >> 1) ^ ~0) : (u >> 1);
+    return v;
+}
+
+Try zig/zag encoding:
+
+// with separate streams for R,G,B x2 channels of endpoints:
+dxt1: original size 3338.0KB
+encode 13.4ms (243.2MB/s) decode 7.9ms (414.5MB/s)
+1   zlib      2172.5KB  65.1%  2183.3KB  65.4%
+2    lz4      2797.2KB  83.8%  2808.8KB  84.1%
+3  lz4hc      2415.4KB  72.4%  2472.1KB  74.1%
+4   zstd      2417.5KB  72.4%  2156.7KB  64.6%
+5 zstd20      2047.2KB  61.3%  2046.5KB  61.3%
+
+// with stream endpoint0, endpoint1:
+dxt1: original size 3338.0KB
+encode 6.4ms (510.8MB/s) decode 3.5ms (937.1MB/s)
+1   zlib      2172.5KB  65.1%  1970.1KB  59.0%
+2    lz4      2797.2KB  83.8%  2625.1KB  78.6%
+3  lz4hc      2415.4KB  72.4%  2229.0KB  66.8%
+4   zstd      2417.5KB  72.4%  2050.5KB  61.4%
+5 zstd20      2047.2KB  61.3%  1879.9KB  56.3%
+
+dxt5: original size 5188.0KB
+encode 9.3ms (546.8MB/s) decode 5.1ms (996.2MB/s)
+1   zlib      3016.2KB  58.1%  2717.4KB  52.4%
+2    lz4      3518.2KB  67.8%  3312.6KB  63.9%
+3  lz4hc      3147.9KB  60.7%  2949.6KB  56.9%
+4   zstd      3145.5KB  60.6%  2799.1KB  54.0%
+5 zstd20      2830.9KB  54.6%  2629.4KB  50.7%
+
+
+Try predicting next pixel value as delta from
+average of left+top ones (still with zigzag encoding):
+dxt1: original size 3338.0KB // separate streams for r,g,b *2
+encode 14.6ms (223.7MB/s) decode 11.3ms (289.8MB/s)
+1   zlib      2172.5KB  65.1%  2205.4KB  66.1%
+2    lz4      2797.2KB  83.8%  2839.3KB  85.1%
+3  lz4hc      2415.4KB  72.4%  2496.5KB  74.8%
+4   zstd      2417.5KB  72.4%  2169.6KB  65.0%
+5 zstd20      2047.2KB  61.3%  2067.7KB  61.9%
+
+dxt1: original size 3338.0KB // just two endpoint streams
+encode 6.2ms (522.4MB/s) decode 4.1ms (789.6MB/s)
+1   zlib      2172.5KB  65.1%  2169.5KB  65.0%
+2    lz4      2797.2KB  83.8%  2826.4KB  84.7%
+3  lz4hc      2415.4KB  72.4%  2454.3KB  73.5%
+4   zstd      2417.5KB  72.4%  2252.2KB  67.5%
+5 zstd20      2047.2KB  61.3%  2088.7KB  62.6%
+
+dxt5: original size 5188.0KB
+encode 9.6ms (526.3MB/s) decode 6.5ms (774.0MB/s)
+1   zlib      3016.2KB  58.1%  2894.8KB  55.8%
+2    lz4      3518.2KB  67.8%  3436.4KB  66.2%
+3  lz4hc      3147.9KB  60.7%  3151.2KB  60.7%
+4   zstd      3145.5KB  60.6%  2949.0KB  56.8%
+5 zstd20      2830.9KB  54.6%  2819.6KB  54.3%
+
+
+ASTC: bollocks, simple splitting is generally not useful
