@@ -1,4 +1,4 @@
-// smol-v - tests code - public domain - https://github.com/aras-p/smol-v
+// filteression - tests code - public domain
 // authored on 2016 by Aras Pranckevicius
 // no warranty implied; use at your own risk
 
@@ -139,7 +139,7 @@ int main()
 		// Read
 		printf("Reading %s\n", kFiles[i]);
 		ByteArray textureData;
-		ReadFile((std::string("tests/bits/") + kFiles[i]).c_str(), textureData);
+		ReadFile((std::string("testing/texture-data/") + kFiles[i]).c_str(), textureData);
 		if (textureData.empty())
 		{
 			printf("ERROR: failed to read %s\n", kFiles[i]);
