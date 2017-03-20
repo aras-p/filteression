@@ -64,6 +64,7 @@
 		2B806CF81E7F1232003CBE80 /* zstd_opt.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = zstd_opt.h; path = external/zstd/compress/zstd_opt.h; sourceTree = "<group>"; };
 		2B806CFD1E7F123C003CBE80 /* miniz.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = miniz.c; path = external/miniz/miniz.c; sourceTree = "<group>"; };
 		2B806CFE1E7F123C003CBE80 /* miniz.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = miniz.h; path = external/miniz/miniz.h; sourceTree = "<group>"; };
+		2B806D001E7FB964003CBE80 /* platformwrap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = platformwrap.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -108,6 +109,7 @@
 			isa = PBXGroup;
 			children = (
 				2B806CD81E7F11EE003CBE80 /* external */,
+				2B806D001E7FB964003CBE80 /* platformwrap.h */,
 				2B806CD31E7F0B14003CBE80 /* testmain.cpp */,
 			);
 			name = testing;

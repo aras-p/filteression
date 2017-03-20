@@ -8,6 +8,7 @@
 #include "external/lz4/lz4hc.h"
 #include "external/miniz/miniz.h"
 #include "external/zstd/zstd.h"
+#include "platformwrap.h"
 #include <stdio.h>
 #include <map>
 #include <string>
@@ -127,6 +128,8 @@ int main()
     typedef std::map<std::string, CompressorSizeMap> FormatSizeMap;
     FormatSizeMap sizes;
     std::map<std::string, size_t> totalSize;
+    typedef std::pair<float, float> EncodeDecodeTime;
+    std::map<std::string, EncodeDecodeTime> filterTimes;
 
 	// go over all test files
     std::regex namePattern("(.*)/.*-(\\d+)x(\\d+)\\.bin");
@@ -170,22 +173,28 @@ int main()
         // Encode
         ByteArray encoded;
         encoded.resize(textureData.size(), 0xCD);
+        TimerBegin();
         if (!filteression::Encode(textureData.data(), textureData.size(), width, height, format, encoded.data()))
         {
             printf("ERROR: failed to encode\n");
             ++errorCount;
             break;
         }
+        float encodeTime = TimerEnd();
+        filterTimes[formatStr].first += encodeTime;
 
         // Decode
         ByteArray decoded;
         decoded.resize(textureData.size(), 0xCD);
+        TimerBegin();
         if (!filteression::Decode(encoded.data(), encoded.size(), width, height, format, decoded.data()))
         {
             printf("ERROR: failed to decode\n");
             ++errorCount;
             break;
         }
+        float decodeTime = TimerEnd();
+        filterTimes[formatStr].second += decodeTime;
 
 		// Check that it decoded 100% the same
 		if (textureData != decoded)
@@ -238,6 +247,8 @@ int main()
     {
         size_t size = totalSize[fit->first];
         printf("\n%s: original size %6.1fKB\n", fit->first.c_str(), size/1024.0f);
+        const EncodeDecodeTime& times = filterTimes[fit->first];
+        printf("encode %.2fs (%.1fMB/s) decode %.2f (%.1fMB/s)s\n", times.first, size/1024.0f/1024.0f/times.first, times.second, size/1024.0f/1024.0f/times.second);
         const CompressorSizeMap& sizeMap = sizes[fit->first];
         for (CompressorSizeMap::const_iterator it = sizeMap.begin(), itEnd = sizeMap.end(); it != itEnd; ++it)
         {
